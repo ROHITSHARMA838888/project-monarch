@@ -13,6 +13,8 @@
 
 ## 🎯 Key Features
 - 🗣️ **Jarvis-Level Voice Assistant** — Continuous dialogue, full system voice control (Locks, settings, apps)
+- 🔌 **Voice Power Actions with Security** — Shutdown/Restart via voice (even on lock screen) with verbal passcode verification
+- ⚡ **Post-Boot Autonomous Jarvis Hook** — Auto-greets upon restart ("Sir, phone is ready, any task today?") and listens for commands
 - 🔍 **Zero-Internet Knowledge Search** — Instant answers to queries completely offline using local LLM
 - 🚫 **No Google Assistant Bloat** — Pure Minimal GApps (Play Store & Core Services only)
 - 🔌 **Advanced Reboot Menu** — Direct reboot to Recovery (OrangeFox), Bootloader, Fastbootd & SystemUI
