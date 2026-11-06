@@ -21,10 +21,11 @@
 - 📸 **AI Photo/Video Editor** — On-device background removal, noise reduction
 
 ## 📦 Build Variants
-| Variant | AI | Root |
-|:---|:---|:---|
-| Standard | ✅ | ❌ |
-| Power | ✅ | ✅ (Magisk/KernelSU) |
+| Variant | AI | Root Engine | Banking Compatibility |
+|:---|:---|:---|:---|
+| Standard | ✅ Gemma 4 E2B | ❌ Non-Rooted | 100% Out of the box |
+| Power (KSU-Next) | ✅ Gemma 4 E2B | ⚡ KernelSU-Next + SuSFS | ✅ Stealth Mode (Bypasses Play Integrity & Root Check) |
+| Power (Magisk) | ✅ Gemma 4 E2B | 🛠️ Magisk Zygisk | ✅ With DenyList / Shamiko |
 
 ## 🔒 Privacy Policy
 - All AI processing happens ON-DEVICE

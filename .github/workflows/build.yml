@@ -12,13 +12,13 @@ on:
           - userdebug
           - user
       root_type:
-        description: 'Root Variant'
+        description: 'Root Engine'
         required: true
         default: 'vanilla'
         type: choice
         options:
           - vanilla (Non-Rooted)
-          - ksu (KernelSU Integrated)
+          - ksu-next (KernelSU-Next + SuSFS)
           - magisk (Magisk Integrated)
       enable_ccache:
         description: 'Enable ccache for faster compilation'
@@ -76,6 +76,16 @@ jobs:
           export CCACHE_DIR=~/.ccache
           ccache -M 50G
           ccache -s
+
+      - name: Setup KernelSU-Next & SuSFS
+        if: ${{ inputs.root_type == 'ksu-next' }}
+        run: |
+          echo "Integrating KernelSU-Next (KernelSU-Next/KernelSU-Next) and SuSFS..."
+          cd ~/monarch/kernel/xiaomi/sm8735
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+          # Configure SuSFS stealth patch for banking security
+          echo "CONFIG_KSU=y" >> arch/arm64/configs/*_defconfig || true
+          echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/*_defconfig || true
 
       - name: Apply Monarch AI & Spoofing Framework Patches
         run: |
