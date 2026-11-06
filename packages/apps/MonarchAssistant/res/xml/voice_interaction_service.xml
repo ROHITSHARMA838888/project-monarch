@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:sessionService="org.monarch.assistant.MonarchVoiceSessionService"
+    android:recognitionService="org.monarch.assistant.MonarchRecognitionService"
+    android:settingsActivity="org.monarch.assistant.MonarchSettingsActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchFromKeyguard="true" />

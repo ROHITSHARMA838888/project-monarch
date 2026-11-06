@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Monarch AI</string>
+    <string name="greeting_default">हाय बॉस! आज मैं क्या करूँ आपके लिए?</string>
+    <string name="reboot_prompt">सर, क्या आप वाकई रीस्टार्ट करना चाहते हैं? कृपया अपना वॉयस पासकोड बोलिए।</string>
+    <string name="shutdown_prompt">सर, क्या आप वाकई स्विच ऑफ करना चाहते हैं? कृपया अपना वॉयस पासकोड बोलिए।</string>
+    <string name="post_boot_ready">सर, फ़ोन रीस्टार्ट हो गया है और सभी सिस्टम्स तैयार हैं। क्या आज मेरे लिए कोई काम है?</string>
+</resources>
