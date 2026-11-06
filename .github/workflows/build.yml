@@ -67,7 +67,7 @@ jobs:
           repo init -u https://android.googlesource.com/platform/manifest -b android-latest-release --depth=1
           mkdir -p .repo/local_manifests
           cp $GITHUB_WORKSPACE/local_manifests/roomservice.xml .repo/local_manifests/
-          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags --depth=1
+          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
 
       - name: Setup ccache
         if: ${{ inputs.enable_ccache }}
