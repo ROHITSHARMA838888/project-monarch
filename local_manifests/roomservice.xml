@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest>
+
+  <!-- Poco F7 (onyx) Device Tree -->
+  <project path="device/xiaomi/onyx"
+           name="xiaomi-onyx-dev/android_device_xiaomi_onyx"
+           remote="github"
+           revision="lineage-24.0" />
+
+  <!-- Vendor Blobs (Adarsh Grewal) -->
+  <project path="vendor/xiaomi/onyx"
+           name="xiaomi-onyx-dev/proprietary_vendor_xiaomi_onyx"
+           remote="github"
+           revision="lineage-23.2" />
+
+  <!-- Kernel Source (Snapdragon 8s Gen 4 / SM8735) -->
+  <project path="kernel/xiaomi/sm8735"
+           name="xiaomi-onyx-dev/android_kernel_xiaomi_sm8735"
+           remote="github"
+           revision="seventeen" />
+
+  <!-- Kernel Modules -->
+  <project path="kernel/xiaomi/sm8735-modules"
+           name="xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-modules"
+           remote="github"
+           revision="lineage-24.0" />
+
+  <!-- Kernel Device Trees -->
+  <project path="kernel/xiaomi/sm8735-devicetrees"
+           name="xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-devicetrees"
+           remote="github"
+           revision="lineage-24.0" />
+
+  <!-- MIUI Camera (Optional) -->
+  <project path="device/xiaomi/onyx-miuicamera"
+           name="xiaomi-onyx-dev/android_device_xiaomi_onyx-miuicamera"
+           remote="github"
+           revision="lineage-23.2" />
+
+  <!-- Xiaomi Hardware HAL -->
+  <project path="hardware/xiaomi"
+           name="Onyx-Hubs/android_hardware_xiaomi"
+           remote="github"
+           revision="lineage-23.2" />
+
+</manifest>
