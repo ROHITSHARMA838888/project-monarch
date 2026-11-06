@@ -12,13 +12,16 @@
 - **Speed:** ~30-35 tokens/sec | TTFT ~60ms
 
 ## 🎯 Key Features
-- 🗣️ **Jarvis-Level Voice Assistant** — Continuous dialogue, full system control
-- 🔐 **Voice Passkey Lock** — Unlock with your secret voice phrase
-- 🛡️ **AI Privacy Guard** — Real-time app monitoring, zero data leakage
-- ⚡ **AI Performance Brain** — Auto game boost, smart battery management
-- 📅 **Smart Scheduler** — Voice-activated task automation
-- 🌐 **Offline Live Translator** — Hindi/English on-screen translation
-- 📸 **AI Photo/Video Editor** — On-device background removal, noise reduction
+- 🗣️ **Jarvis-Level Voice Assistant** — Continuous dialogue, full system voice control (Locks, settings, apps)
+- 🔍 **Zero-Internet Knowledge Search** — Instant answers to queries completely offline using local LLM
+- 🚫 **No Google Assistant Bloat** — Pure Minimal GApps (Play Store & Core Services only)
+- 🔌 **Advanced Reboot Menu** — Direct reboot to Recovery (OrangeFox), Bootloader, Fastbootd & SystemUI
+- 📱 **Always On Display (AOD) & Edge Lighting** — Custom AOD clocks, notification glow styles
+- 🎨 **Monet Theme Engine** — Pitch Black AMOLED mode, granular chroma/luminance controls
+- 🔐 **Voice Passkey Lock** — Unlock with your secret voice phrase & AI challenge question
+- 🛡️ **Monarch Spoofing Hub** — TrickyStore, Keybox importer, 1-click online props fetcher, 90/120 FPS games unlock
+- ⚡ **AI Performance Brain** — Auto game boost, smart battery management, aggressive night doze
+- 📸 **MIUI Stock Camera** — Native Xiaomi camera quality with Leica filters
 
 ## 📦 Build Variants
 | Variant | AI | Root Engine | Banking Compatibility |
