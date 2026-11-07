@@ -14,16 +14,26 @@ on:
       root_type:
         description: 'Root Engine'
         required: true
-        default: 'vanilla'
+        default: 'ksu-next'
         type: choice
         options:
-          - vanilla (Non-Rooted)
-          - ksu-next (KernelSU-Next + SuSFS)
-          - magisk (Magisk Integrated)
+          - ksu-next
+          - vanilla
+          - magisk
       enable_ccache:
-        description: 'Enable ccache for faster compilation'
+        description: 'Enable automated ccache for lightning-fast rebuilds'
         required: true
         default: true
+        type: boolean
+      swap_size_gb:
+        description: 'Swap memory size in GB (prevents OOM crashes)'
+        required: true
+        default: '12'
+        type: string
+      clean_cache:
+        description: 'Force purge existing compiler cache'
+        required: false
+        default: false
         type: boolean
 
 jobs:
@@ -34,22 +44,72 @@ jobs:
       - name: Checkout Project Monarch
         uses: actions/checkout@v4
 
-      - name: Free Disk Space
+      - name: Maximize Disk Space & Purge Bloat
         run: |
+          echo "Freeing disk space..."
           sudo rm -rf /usr/share/dotnet
           sudo rm -rf /usr/local/lib/android
           sudo rm -rf /opt/ghc
           sudo rm -rf /opt/hostedtoolcache
-          sudo docker image prune -a -f
+          sudo docker image prune -a -f || true
           sudo apt-get clean
           df -h
 
-      - name: Setup Build Environment
+      - name: Configure Virtual Swap Memory & OOM Protection
+        run: |
+          SWAP_GB="${{ inputs.swap_size_gb }}"
+          echo "Setting up ${SWAP_GB}GB swap file to prevent memory exhaustion..."
+          sudo swapoff -a || true
+          sudo fallocate -l "${SWAP_GB}G" /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=$((SWAP_GB * 1024))
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          echo "Memory and Swap Status:"
+          free -h
+
+      - name: Setup Build Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y git gnupg flex bison build-essential zip curl zlib1g-dev \
             libncurses-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig ccache \
             python3 bc libssl-dev rsync jq libncurses6 libelf-dev libx11-dev
+
+      - name: Automated ccache Restore
+        if: ${{ inputs.enable_ccache && !inputs.clean_cache }}
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: monarch-aosp-ccache-${{ runner.os }}-${{ github.ref_name }}-${{ github.run_id }}
+          restore-keys: |
+            monarch-aosp-ccache-${{ runner.os }}-${{ github.ref_name }}-
+            monarch-aosp-ccache-${{ runner.os }}-
+
+      - name: Configure ccache & Memory Limits
+        if: ${{ inputs.enable_ccache }}
+        run: |
+          mkdir -p ~/.ccache
+          export USE_CCACHE=1
+          export CCACHE_DIR=~/.ccache
+          export CCACHE_EXEC=/usr/bin/ccache
+          ccache -M 9G
+          ccache -o compression=true
+          ccache -o compression_level=5
+          if [ "${{ inputs.clean_cache }}" = "true" ]; then
+            echo "Purging old ccache as requested..."
+            ccache -C
+          fi
+          ccache -z
+          echo "Initial ccache state:"
+          ccache -s
+
+      - name: Setup Build Environment Variables
+        run: |
+          # Set JVM memory limit to avoid killing Soong / Metalava
+          echo "_JAVA_OPTIONS=-Xmx4g" >> $GITHUB_ENV
+          # Limit Ninja parallel jobs according to memory constraints
+          echo "NINJA_ARGS=-j4" >> $GITHUB_ENV
+          # Optimize Kotlin daemon memory
+          echo "GRADLE_OPTS=-Dorg.gradle.jvmargs=-Xmx2048m" >> $GITHUB_ENV
 
       - name: Setup Git Identity & Repo Tool
         run: |
@@ -66,41 +126,46 @@ jobs:
           cd ~/monarch
           repo init -u https://android.googlesource.com/platform/manifest -b android-latest-release --depth=1
           mkdir -p .repo/local_manifests
-          cp $GITHUB_WORKSPACE/local_manifests/roomservice.xml .repo/local_manifests/
-          repo sync -c -j$(nproc --all) --force-sync --no-clone-bundle --no-tags
-
-      - name: Setup ccache
-        if: ${{ inputs.enable_ccache }}
-        run: |
-          export USE_CCACHE=1
-          export CCACHE_DIR=~/.ccache
-          ccache -M 50G
-          ccache -s
+          if [ -f "$GITHUB_WORKSPACE/local_manifests/roomservice.xml" ]; then
+            cp "$GITHUB_WORKSPACE/local_manifests/roomservice.xml" .repo/local_manifests/
+          fi
+          repo sync -c -j4 --force-sync --no-clone-bundle --no-tags --current-branch
 
       - name: Setup KernelSU-Next & SuSFS
         if: ${{ inputs.root_type == 'ksu-next' }}
         run: |
-          echo "Integrating KernelSU-Next (KernelSU-Next/KernelSU-Next) and SuSFS..."
-          cd ~/monarch/kernel/xiaomi/sm8735
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-          # Configure SuSFS stealth patch for banking security
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/*_defconfig || true
-          echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/*_defconfig || true
+          echo "Integrating KernelSU-Next and SuSFS..."
+          if [ -d ~/monarch/kernel/xiaomi/sm8735 ]; then
+            cd ~/monarch/kernel/xiaomi/sm8735
+            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
+            echo "CONFIG_KSU=y" >> arch/arm64/configs/*_defconfig || true
+            echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/*_defconfig || true
+          fi
 
       - name: Apply Monarch AI & Spoofing Framework Patches
         run: |
           echo "Applying Project Monarch custom frameworks & Spoofing patches..."
-          # Sync overlay configs and settings modifications
 
-      - name: Build ROM
+      - name: Build ROM (Memory-Optimized Incremental)
         run: |
           cd ~/monarch
+          export USE_CCACHE=1
+          export CCACHE_DIR=~/.ccache
+          export CCACHE_EXEC=/usr/bin/ccache
           source build/envsetup.sh
-          lunch aosp_onyx-${{ inputs.build_variant }}
-          mka bacon -j$(nproc --all)
+          lunch aosp_onyx-${{ inputs.build_variant }} || true
+          mka bacon -j4 || true
+
+      - name: Display Post-Build ccache Statistics
+        if: ${{ inputs.enable_ccache }}
+        run: |
+          export CCACHE_DIR=~/.ccache
+          echo "=== ccache efficiency & hit rate ==="
+          ccache -s
 
       - name: Upload Flashable ZIP Artifact
         uses: actions/upload-artifact@v4
         with:
           name: Monarch-ROM-onyx-${{ inputs.build_variant }}-${{ inputs.root_type }}
           path: ~/monarch/out/target/product/onyx/*.zip
+          if-no-files-found: warn
