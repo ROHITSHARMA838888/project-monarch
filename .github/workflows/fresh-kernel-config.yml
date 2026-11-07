@@ -49,7 +49,7 @@ jobs:
       - name: Install compilation tools
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential bc bison flex clang lld llvm libssl-dev libelf-dev dwarves device-tree-compiler lz4 rsync zip
+          sudo apt-get install -y build-essential bc bison flex clang lld llvm libssl-dev libelf-dev dwarves device-tree-compiler lz4 rsync zip kmod
       - name: Fetch pinned compiler and source set
         shell: bash
         run: |
@@ -108,6 +108,11 @@ jobs:
           find out -name '*.ko' > ../../build-evidence/in-tree-modules.txt
           printf '%s\n' 'COMPILE CANDIDATE ONLY: no external-module ABI, vendor compatibility or phone boot qualification. Not a ROM or flashable package.' > ../../build-evidence/STATUS.txt
           sha256sum ../../build-evidence/Image > ../../build-evidence/Image.sha256
+      - name: Build external hardware modules and check release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash fresh-kernel/build_onyx_external_modules.sh "$GITHUB_WORKSPACE" 2>&1 | tee build-evidence/external-compile.log
       - name: Preserve build evidence and diagnostic logs
         if: always()
         uses: actions/upload-artifact@v4
