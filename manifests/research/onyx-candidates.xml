@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Research pins only. Not a complete/build-qualified AOSP local manifest. -->
+<manifest>
+  <remote name="monarch-github" fetch="https://github.com/" />
+  <remote name="monarch-gitlab" fetch="https://gitlab.com/" />
+  <project path="device/xiaomi/onyx" name="xiaomi-onyx-dev/android_device_xiaomi_onyx" remote="monarch-github" revision="37ac86fe1cb218ed2198ad5c7f501106b17fb773" />
+  <project path="vendor/xiaomi/onyx" name="AdarshGrewal/proprietary_vendor_xiaomi_onyx" remote="monarch-gitlab" revision="0b315cd69d0d0495b9d260e0a29724408bec0ca9" />
+  <project path="kernel/xiaomi/sm8735" name="xiaomi-onyx-dev/android_kernel_xiaomi_sm8735" remote="monarch-github" revision="d0881fd7905872a11cd70bc46b37849135aa9a71" />
+  <project path="kernel/xiaomi/sm8735-modules" name="xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-modules" remote="monarch-github" revision="e46506b8f6e302d1e4b520dd814c9910d55b6ba7" />
+  <project path="kernel/xiaomi/sm8735-devicetrees" name="xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-devicetrees" remote="monarch-github" revision="f4fbbed3359e85ffee608a0ff4359fa462735614" />
+</manifest>
