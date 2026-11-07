@@ -1,6 +1,10 @@
 name: Fresh onyx kernel configuration validation
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'fresh-kernel/**'
+      - '.github/workflows/fresh-kernel-config.yml'
 permissions:
   contents: read
 jobs:
