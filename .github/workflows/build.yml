@@ -14,12 +14,10 @@ on:
       root_type:
         description: 'Root Engine'
         required: true
-        default: 'ksu-next'
+        default: 'vanilla'
         type: choice
         options:
-          - ksu-next
           - vanilla
-          - magisk
       enable_ccache:
         description: 'Enable automated ccache for lightning-fast rebuilds'
         required: true
@@ -44,6 +42,15 @@ jobs:
       - name: Checkout Project Monarch
         uses: actions/checkout@v4
 
+      - name: Check port readiness before downloading AOSP
+        run: |
+          set -euo pipefail
+          git init /tmp/monarch-onyx-audit
+          git -C /tmp/monarch-onyx-audit remote add origin https://github.com/xiaomi-onyx-dev/android_device_xiaomi_onyx.git
+          git -C /tmp/monarch-onyx-audit fetch --depth=1 origin 37ac86fe1cb218ed2198ad5c7f501106b17fb773
+          git -C /tmp/monarch-onyx-audit checkout --detach FETCH_HEAD
+          python3 scripts/audit_rom.py --device /tmp/monarch-onyx-audit --require-ready
+
       - name: Maximize Disk Space & Purge Bloat
         run: |
           echo "Freeing disk space..."
@@ -56,8 +63,11 @@ jobs:
           df -h
 
       - name: Configure Virtual Swap Memory & OOM Protection
+        env:
+          REQUESTED_SWAP_GB: ${{ inputs.swap_size_gb }}
         run: |
-          SWAP_GB="${{ inputs.swap_size_gb }}"
+          SWAP_GB="$REQUESTED_SWAP_GB"
+          [[ "$SWAP_GB" =~ ^([1-9]|1[0-6])$ ]] || { echo "Swap must be 1-16 GiB"; exit 1; }
           echo "Setting up ${SWAP_GB}GB swap file to prevent memory exhaustion..."
           sudo swapoff -a || true
           sudo fallocate -l "${SWAP_GB}G" /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=$((SWAP_GB * 1024))
@@ -88,7 +98,7 @@ jobs:
         if: ${{ inputs.enable_ccache }}
         run: |
           mkdir -p ~/.ccache
-          export USE_CCACHE=1
+          export USE_CCACHE=${{ inputs.enable_ccache && '1' || '0' }}
           export CCACHE_DIR=~/.ccache
           export CCACHE_EXEC=/usr/bin/ccache
           ccache -M 9G
@@ -131,30 +141,19 @@ jobs:
           fi
           repo sync -c -j4 --force-sync --no-clone-bundle --no-tags --current-branch
 
-      - name: Setup KernelSU-Next & SuSFS
-        if: ${{ inputs.root_type == 'ksu-next' }}
+      - name: Verify Monarch product integration
         run: |
-          echo "Integrating KernelSU-Next and SuSFS..."
-          if [ -d ~/monarch/kernel/xiaomi/sm8735 ]; then
-            cd ~/monarch/kernel/xiaomi/sm8735
-            curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next
-            echo "CONFIG_KSU=y" >> arch/arm64/configs/*_defconfig || true
-            echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/*_defconfig || true
-          fi
-
-      - name: Apply Monarch AI & Spoofing Framework Patches
-        run: |
-          echo "Applying Project Monarch custom frameworks & Spoofing patches..."
+          test -f "$GITHUB_WORKSPACE/products/monarch.mk"
 
       - name: Build ROM (Memory-Optimized Incremental)
         run: |
           cd ~/monarch
-          export USE_CCACHE=1
+          export USE_CCACHE=${{ inputs.enable_ccache && '1' || '0' }}
           export CCACHE_DIR=~/.ccache
           export CCACHE_EXEC=/usr/bin/ccache
           source build/envsetup.sh
-          lunch aosp_onyx-${{ inputs.build_variant }} || true
-          mka bacon -j4 || true
+          lunch aosp_onyx-${{ inputs.build_variant }}
+          m -j4 target-files-package otapackage
 
       - name: Display Post-Build ccache Statistics
         if: ${{ inputs.enable_ccache }}
@@ -168,4 +167,4 @@ jobs:
         with:
           name: Monarch-ROM-onyx-${{ inputs.build_variant }}-${{ inputs.root_type }}
           path: ~/monarch/out/target/product/onyx/*.zip
-          if-no-files-found: warn
+          if-no-files-found: error

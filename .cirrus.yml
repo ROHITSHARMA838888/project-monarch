@@ -13,6 +13,11 @@ build_rom_task:
     CCACHE_SIZE: "20G"
     CCACHE_COMPRESS: 1
   build_script:
+    - git init /tmp/monarch-onyx-audit
+    - git -C /tmp/monarch-onyx-audit remote add origin https://github.com/xiaomi-onyx-dev/android_device_xiaomi_onyx.git
+    - git -C /tmp/monarch-onyx-audit fetch --depth=1 origin 37ac86fe1cb218ed2198ad5c7f501106b17fb773
+    - git -C /tmp/monarch-onyx-audit checkout --detach FETCH_HEAD
+    - python3 scripts/audit_rom.py --device /tmp/monarch-onyx-audit --require-ready
     - mkdir -p /tmp/ccache
     - git config --global user.name "ROHITSHARMA838888"
     - git config --global user.email "rohitsharma838888@users.noreply.github.com"
@@ -25,9 +30,8 @@ build_rom_task:
     - mkdir -p .repo/local_manifests
     - cp $CIRRUS_WORKING_DIR/local_manifests/roomservice.xml .repo/local_manifests/
     - repo sync -c -j8 --force-sync --no-clone-bundle --no-tags --current-branch
-    - if [ -d kernel/xiaomi/sm8735 ]; then cd kernel/xiaomi/sm8735 && curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next && cd /root/monarch; fi
     - source build/envsetup.sh
-    - lunch aosp_onyx-userdebug || true
-    - mka bacon -j8 || true
+    - lunch aosp_onyx-userdebug
+    - m -j8 target-files-package otapackage
   rom_artifacts:
     path: "/root/monarch/out/target/product/onyx/*.zip"

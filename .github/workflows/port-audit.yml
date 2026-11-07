@@ -1,0 +1,31 @@
+name: AOSP port readiness audit (not a ROM build)
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'scripts/audit_rom.py'
+      - '.github/workflows/*.yml'
+      - 'local_manifests/**'
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned device tree only
+        run: |
+          git init /tmp/onyx-device
+          git -C /tmp/onyx-device remote add origin https://github.com/xiaomi-onyx-dev/android_device_xiaomi_onyx.git
+          git -C /tmp/onyx-device fetch --depth=1 origin 37ac86fe1cb218ed2198ad5c7f501106b17fb773
+          git -C /tmp/onyx-device checkout --detach FETCH_HEAD
+      - name: Report missing integration without syncing AOSP
+        run: |
+          python3 scripts/audit_rom.py --device /tmp/onyx-device --output port-audit.json
+          python3 -c 'import json,os; r=json.load(open("port-audit.json")); f=open(os.environ["GITHUB_STEP_SUMMARY"],"a"); f.write("## Static audit only\nROM ready: "+str(r["ready"])+"\n\n"+"\n".join("- "+b for b in r["blockers"])+"\n")'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: aosp-port-readiness-not-rom
+          path: port-audit.json
+          if-no-files-found: error
