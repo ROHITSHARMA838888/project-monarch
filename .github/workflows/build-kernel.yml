@@ -1,97 +1,102 @@
-name: ⚡ Poco F7 (onyx) Kernel & Boot Image Build
-
+name: Poco F7 kernel build
 on:
   workflow_dispatch:
     inputs:
       ksu_variant:
-        description: 'KernelSU Variant'
+        description: Kernel variant (SuSFS not integrated)
         required: true
-        default: 'ksu-next'
+        default: ksu-next
         type: choice
-        options:
-          - ksu-next (KernelSU-Next + SuSFS)
-          - vanilla (Stock Kernel)
-
+        options: [ksu-next, vanilla]
+permissions:
+  contents: read
 jobs:
   build-kernel:
-    name: Build Poco F7 KernelSU-Next
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      KERNEL_SHA: d0881fd7905872a11cd70bc46b37849135aa9a71
+      KSU_SHA: 4c706b5938665866ebe16944a481a7b91e3396af
+      AK3_SHA: 41f04bdb4ee30a44e429c2c1131d5e8bb32b15f1
+      VARIANT: ${{ inputs.ksu_variant }}
+    defaults:
+      run:
+        shell: bash
     steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v4
-
-      - name: Maximize Disk Space & Setup Environment
+      - uses: actions/checkout@v4
+      - name: Install build tools
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
           sudo apt-get update
-          sudo apt-get install -y bc bison build-essential curl flex git gnupg libelf-dev \
-            libssl-dev lz4 make python3 rsync zip zlib1g-dev ccache libncurses-dev \
-            clang lld llvm gcc-aarch64-linux-gnu
-
-      - name: Clone Poco F7 Kernel Source
+          sudo apt-get install -y bc bison build-essential curl flex git libelf-dev libssl-dev lz4 python3 zip zlib1g-dev libncurses-dev clang lld llvm gcc-aarch64-linux-gnu
+          df -h
+      - name: Fetch pinned sources
         run: |
-          mkdir -p $GITHUB_WORKSPACE/kernel
-          cd $GITHUB_WORKSPACE/kernel
-          echo "Cloning Poco F7 (sm8735) Kernel Tree (seventeen branch)..."
-          git clone --depth=1 https://github.com/xiaomi-onyx-dev/android_kernel_xiaomi_sm8735 -b seventeen sm8735
-
-      - name: Integrate KernelSU-Next & SuSFS
-        if: ${{ inputs.ksu_variant == 'ksu-next (KernelSU-Next + SuSFS)' }}
+          set -euo pipefail
+          mkdir -p kernel/sm8735
+          git -C kernel/sm8735 init
+          git -C kernel/sm8735 remote add origin https://github.com/xiaomi-onyx-dev/android_kernel_xiaomi_sm8735.git
+          git -C kernel/sm8735 fetch --depth=1 origin "$KERNEL_SHA"
+          git -C kernel/sm8735 checkout --detach FETCH_HEAD
+          git init AnyKernel3
+          git -C AnyKernel3 remote add origin https://github.com/osm0sis/AnyKernel3.git
+          git -C AnyKernel3 fetch --depth=1 origin "$AK3_SHA"
+          git -C AnyKernel3 checkout --detach FETCH_HEAD
+      - name: Fix and test certificate host tool
         run: |
-          cd $GITHUB_WORKSPACE/kernel/sm8735
-          echo "Setting up KernelSU-Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s || true
-          echo "CONFIG_KSU=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/gki_defconfig
-          echo "CONFIG_KSU_SUSFS=y" >> arch/arm64/configs/gki_defconfig
-
-      - name: Setup AnyKernel3
-        run: |
-          cd $GITHUB_WORKSPACE
-          git clone https://github.com/osm0sis/AnyKernel3 -b master AnyKernel3
-          sed -i 's/device.name1=.*/device.name1=onyx/g' AnyKernel3/anykernel.sh
-          sed -i 's/device.name2=.*/device.name2=Poco F7/g' AnyKernel3/anykernel.sh
-
-      - name: Compile Kernel
-        run: |
-          cd $GITHUB_WORKSPACE/kernel/sm8735
-          export ARCH=arm64
-          export SUBARCH=arm64
-          export CROSS_COMPILE=aarch64-linux-gnu-
-          
-          echo "Generating defconfig with GKI + onyx_perf..."
-          make O=out ARCH=arm64 CC=clang LLVM=1 gki_defconfig vendor/onyx_perf.config || \
-          make O=out ARCH=arm64 CC=clang LLVM=1 gki_defconfig
-          
-          echo "Disabling module signing verification (prevent OpenSSL cert errors)..."
-          ./scripts/config --file out/.config --set-str SYSTEM_TRUSTED_KEYS "" || true
-          ./scripts/config --file out/.config --set-str SYSTEM_REVOCATION_KEYS "" || true
-          ./scripts/config --file out/.config --disable MODULE_SIG_ALL || true
-          ./scripts/config --file out/.config --disable SYSTEM_TRUSTED_KEYS || true
-          ./scripts/config --file out/.config --disable SYSTEM_REVOCATION_KEYS || true
-          
-          echo "Building Kernel Image (Image & Image.lz4)..."
-          make -j$(nproc --all) O=out \
-            ARCH=arm64 \
-            CC=clang \
-            CROSS_COMPILE=aarch64-linux-gnu- \
-            LLVM=1 \
-            LLVM_IAS=1 Image Image.lz4 || make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 Image
-
-      - name: Package Flashable Zip
-        run: |
-          cd $GITHUB_WORKSPACE
+          set -euo pipefail
+          python3 scripts/fix_extract_cert.py kernel/sm8735
           mkdir -p output
-          find kernel/sm8735/out/arch/arm64/boot/ -name "Image*" -exec cp {} AnyKernel3/ \;
-          cd AnyKernel3
-          ZIP_NAME="Monarch-KernelSU-Next-onyx-$(date +%Y%m%d%H%M).zip"
-          zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder
-          echo "ZIP created: $ZIP_NAME"
-          ls -la ../*.zip
-
-      - name: Upload Kernel Package Artifact
-        uses: actions/upload-artifact@v4
+          clang -Wall -Wextra -Werror kernel/sm8735/certs/extract-cert.c -lcrypto -o output/extract-cert
+          output/extract-cert "" output/empty.der
+          test ! -s output/empty.der
+          openssl req -x509 -newkey rsa:2048 -nodes -subj /CN=Monarch-CI -keyout output/test.key -out output/test.pem -days 1
+          output/extract-cert output/test.pem output/test.der
+          openssl x509 -in output/test.pem -outform DER -out output/expected.der
+          cmp output/test.der output/expected.der
+          rm output/test.key
+      - name: Integrate pinned KernelSU Next
+        if: inputs.ksu_variant == 'ksu-next'
+        run: |
+          set -euo pipefail
+          cd kernel/sm8735
+          curl --fail --location --retry 3 "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/$KSU_SHA/kernel/setup.sh" -o ../ksu-setup.sh
+          bash ../ksu-setup.sh "$KSU_SHA"
+          test "$(git -C KernelSU-Next rev-parse HEAD)" = "$KSU_SHA"
+          test -f drivers/kernelsu/Kconfig
+      - name: Configure and compile kernel
+        run: |
+          set -euo pipefail
+          cd kernel/sm8735
+          make O=out ARCH=arm64 CC=clang LLVM=1 gki_defconfig vendor/onyx_perf.config
+          if [ "$VARIANT" = ksu-next ]; then
+            scripts/config --file out/.config --enable KSU
+          else
+            scripts/config --file out/.config --disable KSU
+          fi
+          make O=out ARCH=arm64 CC=clang LLVM=1 olddefconfig
+          if [ "$VARIANT" = ksu-next ]; then grep -qx CONFIG_KSU=y out/.config; fi
+          make -j"$(nproc)" O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 Image
+          test -s out/arch/arm64/boot/Image
+          cp out/.config ../../output/kernel.config
+          cp out/Module.symvers ../../output/Module.symvers
+      - name: Package and verify kernel artifact
+        run: |
+          set -euo pipefail
+          cp kernel/sm8735/out/arch/arm64/boot/Image AnyKernel3/Image
+          sed -i 's/^device.name1=.*/device.name1=onyx/; s/^device.name2=.*/device.name2=/; s/^device.name3=.*/device.name3=/; s/^device.name4=.*/device.name4=/; s/^device.name5=.*/device.name5=/' AnyKernel3/anykernel.sh
+          printf 'project=%s\nkernel=%s\nksu=%s\nanykernel=%s\nvariant=%s\n' "$GITHUB_SHA" "$KERNEL_SHA" "$KSU_SHA" "$AK3_SHA" "$VARIANT" > output/provenance.txt
+          cp output/provenance.txt AnyKernel3/monarch-build.txt
+          (cd AnyKernel3 && zip -r9 "../output/Monarch-kernel-onyx-$VARIANT.zip" . -x '.git/*' 'README.md' '*placeholder')
+          unzip -t "output/Monarch-kernel-onyx-$VARIANT.zip"
+          (cd output && sha256sum *.zip > SHA256SUMS.txt)
+      - uses: actions/upload-artifact@v4
         with:
-          name: Monarch-KernelSU-Next-PocoF7
-          path: '*.zip'
+          name: Monarch-kernel-onyx-${{ inputs.ksu_variant }}
+          path: |
+            output/*.zip
+            output/SHA256SUMS.txt
+            output/provenance.txt
+            output/kernel.config
+            output/Module.symvers
+          if-no-files-found: error
           retention-days: 14
