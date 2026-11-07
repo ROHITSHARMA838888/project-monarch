@@ -77,6 +77,8 @@ jobs:
           test -x compiler/clang-r510928/bin/clang
           echo "$GITHUB_WORKSPACE/compiler/clang-r510928/bin" >> "$GITHUB_PATH"
           df -h
+      - name: Reject source mismatches before compilation
+        run: python3 fresh-kernel/preflight.py "$GITHUB_WORKSPACE"
       - name: Integrate pinned KernelSU and repair certificate guards
         shell: bash
         run: |
