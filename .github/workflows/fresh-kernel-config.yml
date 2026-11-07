@@ -1,6 +1,11 @@
 name: Fresh onyx kernel configuration validation
 on:
   workflow_dispatch:
+    inputs:
+      full_compile:
+        description: Run full kernel and external-module compilation after probe review
+        type: boolean
+        default: false
   pull_request:
     paths:
       - 'fresh-kernel/**'
@@ -41,6 +46,7 @@ jobs:
           path: config-evidence/
           if-no-files-found: error
   compile:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_compile
     needs: configure
     runs-on: ubuntu-24.04
     timeout-minutes: 150

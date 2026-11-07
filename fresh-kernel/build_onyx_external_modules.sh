@@ -46,8 +46,7 @@ for module in "${modules[@]}"; do
   printf '\n=== Building %s ===\n' "$module"
   make -j2 -C "$ext/$module" M="../sm8735-modules/$module" \
     KERNEL_SRC="$kernel" OUT_DIR="$out" O="$out" ARCH=arm64 LLVM=1 LLVM_IAS=1 \
-    TARGET_PRODUCT=onyx TARGET_BOARD_PLATFORM=sun KERNEL_UAPI_HEADERS_DIR="$out" \
-    modules
+    TARGET_PRODUCT=onyx TARGET_BOARD_PLATFORM=sun KERNEL_UAPI_HEADERS_DIR="$out"
   printf '%s\n' "$module" >> "$evidence/external-groups-completed.txt"
 done
 find "$work/sources" -type f -name '*.ko' -print > "$evidence/all-built-modules.txt"
