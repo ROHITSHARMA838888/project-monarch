@@ -322,7 +322,6 @@ qcom_llcc_pmu.ko
 qcom_logbuf_boot_log.ko
 qcom_logbuf_vendor_hooks.ko
 qcom_lpm.ko
-qcom_pdr_msg.ko
 qcom_pil_info.ko
 qcom_q6v5.ko
 qcom_q6v5_pas.ko

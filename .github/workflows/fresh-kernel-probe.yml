@@ -2,7 +2,7 @@ name: Targeted external-module wrapper probe
 'on':
   pull_request:
     paths:
-    - fresh-kernel/**
+    - fresh-kernel/build_onyx_external_modules.sh
     - .github/workflows/fresh-kernel-probe.yml
   workflow_dispatch: {}
 permissions:
