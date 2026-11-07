@@ -1,0 +1,38 @@
+name: Fresh onyx kernel configuration validation
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  configure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install config tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex clang lld llvm libssl-dev libelf-dev
+      - name: Acquire exact upstream kernel and DTS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sources/sm8735 sources/sm8735-devicetrees
+          git -C sources/sm8735 init
+          git -C sources/sm8735 remote add origin https://github.com/xiaomi-onyx-dev/android_kernel_xiaomi_sm8735.git
+          git -C sources/sm8735 fetch --depth=1 origin d0881fd7905872a11cd70bc46b37849135aa9a71
+          git -C sources/sm8735 checkout --detach FETCH_HEAD
+          git -C sources/sm8735-devicetrees init
+          git -C sources/sm8735-devicetrees remote add origin https://github.com/xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-devicetrees.git
+          git -C sources/sm8735-devicetrees fetch --depth=1 origin f4fbbed3359e85ffee608a0ff4359fa462735614
+          git -C sources/sm8735-devicetrees checkout --detach FETCH_HEAD
+          test -d sources/sm8735/arch/arm64/boot/dts/vendor/qcom
+      - name: Resolve fresh device configuration
+        run: bash fresh-kernel/configure_onyx_kernel.sh "$GITHUB_WORKSPACE/sources/sm8735" "$GITHUB_WORKSPACE/config-evidence"
+      - name: Upload configuration evidence (not flashable)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onyx-kernel-configuration-not-flashable
+          path: config-evidence/
+          if-no-files-found: error
