@@ -40,7 +40,7 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/kernel/sm8735
           echo "Setting up KernelSU-Next..."
-          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next || true
+          curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s || true
           echo "CONFIG_KSU=y" >> arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_NEXT=y" >> arch/arm64/configs/gki_defconfig
           echo "CONFIG_KSU_SUSFS=y" >> arch/arm64/configs/gki_defconfig
@@ -63,28 +63,31 @@ jobs:
           make O=out ARCH=arm64 CC=clang LLVM=1 gki_defconfig vendor/onyx_perf.config || \
           make O=out ARCH=arm64 CC=clang LLVM=1 gki_defconfig
           
+          echo "Disabling module signing verification (prevent OpenSSL cert errors)..."
+          ./scripts/config --file out/.config --set-str SYSTEM_TRUSTED_KEYS "" || true
+          ./scripts/config --file out/.config --set-str SYSTEM_REVOCATION_KEYS "" || true
+          ./scripts/config --file out/.config --disable MODULE_SIG_ALL || true
+          ./scripts/config --file out/.config --disable SYSTEM_TRUSTED_KEYS || true
+          ./scripts/config --file out/.config --disable SYSTEM_REVOCATION_KEYS || true
+          
           echo "Building Kernel Image (Image & Image.lz4)..."
           make -j$(nproc --all) O=out \
             ARCH=arm64 \
             CC=clang \
             CROSS_COMPILE=aarch64-linux-gnu- \
             LLVM=1 \
-            LLVM_IAS=1 Image Image.lz4
+            LLVM_IAS=1 Image Image.lz4 || make -j$(nproc --all) O=out ARCH=arm64 CC=clang LLVM=1 Image
 
       - name: Package Flashable Zip
         run: |
           cd $GITHUB_WORKSPACE
           mkdir -p output
-          if [ -f kernel/sm8735/out/arch/arm64/boot/Image.lz4 ]; then
-            cp kernel/sm8735/out/arch/arm64/boot/Image.lz4 AnyKernel3/Image.lz4
-          fi
-          if [ -f kernel/sm8735/out/arch/arm64/boot/Image ]; then
-            cp kernel/sm8735/out/arch/arm64/boot/Image AnyKernel3/Image
-          fi
+          find kernel/sm8735/out/arch/arm64/boot/ -name "Image*" -exec cp {} AnyKernel3/ \;
           cd AnyKernel3
           ZIP_NAME="Monarch-KernelSU-Next-onyx-$(date +%Y%m%d%H%M).zip"
           zip -r9 "../$ZIP_NAME" * -x .git README.md *placeholder
           echo "ZIP created: $ZIP_NAME"
+          ls -la ../*.zip
 
       - name: Upload Kernel Package Artifact
         uses: actions/upload-artifact@v4
