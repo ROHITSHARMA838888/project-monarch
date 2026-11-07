@@ -1,0 +1,30 @@
+build_rom_task:
+  name: "Build Project Monarch (onyx)"
+  timeout_in: 240m
+  container:
+    image: aospstudio/docker-aosp:latest
+    cpu: 8
+    memory: 32G
+    disk: 300
+  environment:
+    CIRRUS_CLONE_DEPTH: 1
+    USE_CCACHE: 1
+    CCACHE_DIR: "/tmp/ccache"
+  build_script:
+    - mkdir -p /tmp/ccache
+    - git config --global user.name "ROHITSHARMA838888"
+    - git config --global user.email "rohitsharma838888@users.noreply.github.com"
+    - mkdir -p ~/monarch
+    - cd ~/monarch
+    - repo init -u https://android.googlesource.com/platform/manifest -b android-latest-release --depth=1
+    - mkdir -p .repo/local_manifests
+    - cp $CIRRUS_WORKING_DIR/local_manifests/roomservice.xml .repo/local_manifests/
+    - repo sync -c -j8 --force-sync --no-clone-bundle --no-tags
+    - cd ~/monarch/kernel/xiaomi/sm8735 || true
+    - if [ -d ~/monarch/kernel/xiaomi/sm8735 ]; then curl -LSs "https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/next/kernel/setup.sh" | bash -s next; fi
+    - cd ~/monarch
+    - source build/envsetup.sh
+    - lunch aosp_onyx-userdebug || true
+    - mka bacon -j8 || true
+  rom_artifacts:
+    path: "out/target/product/onyx/*.zip"
