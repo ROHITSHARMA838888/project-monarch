@@ -1,0 +1,144 @@
+name: Fresh onyx kernel configuration validation
+on:
+  workflow_dispatch:
+    inputs:
+      full_compile:
+        description: Run full kernel and external-module compilation after probe review
+        type: boolean
+        default: false
+  pull_request:
+    paths:
+      - 'fresh-kernel/**'
+      - '.github/workflows/fresh-kernel-config.yml'
+permissions:
+  contents: read
+jobs:
+  configure:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install config tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex clang lld llvm libssl-dev libelf-dev
+      - name: Acquire exact upstream kernel and DTS
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p sources/sm8735 sources/sm8735-devicetrees
+          git -C sources/sm8735 init
+          git -C sources/sm8735 remote add origin https://github.com/xiaomi-onyx-dev/android_kernel_xiaomi_sm8735.git
+          git -C sources/sm8735 fetch --depth=1 origin d0881fd7905872a11cd70bc46b37849135aa9a71
+          git -C sources/sm8735 checkout --detach FETCH_HEAD
+          git -C sources/sm8735-devicetrees init
+          git -C sources/sm8735-devicetrees remote add origin https://github.com/xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-devicetrees.git
+          git -C sources/sm8735-devicetrees fetch --depth=1 origin f4fbbed3359e85ffee608a0ff4359fa462735614
+          git -C sources/sm8735-devicetrees checkout --detach FETCH_HEAD
+          test -d sources/sm8735/arch/arm64/boot/dts/vendor/qcom
+      - name: Resolve fresh device configuration
+        run: bash fresh-kernel/configure_onyx_kernel.sh "$GITHUB_WORKSPACE/sources/sm8735" "$GITHUB_WORKSPACE/config-evidence"
+      - name: Upload configuration evidence (not flashable)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: onyx-kernel-configuration-not-flashable
+          path: config-evidence/
+          if-no-files-found: error
+  compile:
+    if: github.event_name == 'workflow_dispatch' && inputs.full_compile
+    needs: configure
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install compilation tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential bc bison flex clang lld llvm libssl-dev libelf-dev dwarves device-tree-compiler lz4 rsync zip kmod
+      - name: Fetch pinned compiler and source set
+        shell: bash
+        run: |
+          set -euo pipefail
+          for entry in 'sm8735 xiaomi-onyx-dev/android_kernel_xiaomi_sm8735 d0881fd7905872a11cd70bc46b37849135aa9a71' 'sm8735-devicetrees xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-devicetrees f4fbbed3359e85ffee608a0ff4359fa462735614' 'sm8735-modules xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-modules e46506b8f6e302d1e4b520dd814c9910d55b6ba7'; do
+            read -r dir repo sha <<< "$entry"
+            mkdir -p "sources/$dir"
+            git -C "sources/$dir" init
+            git -C "sources/$dir" remote add origin "https://github.com/$repo.git"
+            git -C "sources/$dir" fetch --depth=1 origin "$sha"
+            git -C "sources/$dir" checkout --detach FETCH_HEAD
+          done
+          git init compiler
+          git -C compiler remote add origin https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86
+          git -C compiler sparse-checkout init --cone
+          git -C compiler sparse-checkout set clang-r510928
+          git -C compiler fetch --filter=blob:none --depth=1 origin 921f6da692b1ffc96a0daa7e741373f0089d40b0
+          git -C compiler checkout --detach FETCH_HEAD
+          test -x compiler/clang-r510928/bin/clang
+          echo "$GITHUB_WORKSPACE/compiler/clang-r510928/bin" >> "$GITHUB_PATH"
+          df -h
+      - name: Reject source mismatches before compilation
+        run: python3 fresh-kernel/preflight.py "$GITHUB_WORKSPACE"
+      - name: Integrate pinned KernelSU and repair certificate guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd sources/sm8735
+          curl -fL --retry 3 https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/4c706b5938665866ebe16944a481a7b91e3396af/kernel/setup.sh -o ../setup-ksu.sh
+          bash ../setup-ksu.sh 4c706b5938665866ebe16944a481a7b91e3396af
+          test "$(git -C KernelSU-Next rev-parse HEAD)" = 4c706b5938665866ebe16944a481a7b91e3396af
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('certs/extract-cert.c'); text=p.read_text()
+          for body in ['static const char *key_pass;', '\tkey_pass = getenv("KBUILD_SIGN_PIN");']:
+              before='#ifdef USE_PKCS11_ENGINE\n'+body+'\n#endif'
+              assert text.count(before)==1, 'Unexpected certificate-tool source'
+              text=text.replace(before,'#ifndef OPENSSL_IS_BORINGSSL\n'+body+'\n#endif')
+          p.write_text(text)
+          PY
+      - name: Compile corrected kernel configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-evidence
+          clang --version | tee build-evidence/compiler.txt
+          bash fresh-kernel/configure_onyx_kernel.sh "$GITHUB_WORKSPACE/sources/sm8735" "$GITHUB_WORKSPACE/build-evidence"
+          cd sources/sm8735
+          scripts/config --file out/.config --enable KSU
+          make O=out ARCH=arm64 LLVM=1 olddefconfig
+          grep -qx CONFIG_KSU=y out/.config
+          make -j2 O=out ARCH=arm64 LLVM=1 LLVM_IAS=1 TARGET_PRODUCT=onyx Image modules dtbs 2>&1 | tee ../../build-evidence/compile.log
+          test -s out/arch/arm64/boot/Image
+          cp out/.config ../../build-evidence/kernel.config
+          cp out/Module.symvers ../../build-evidence/Module.symvers
+          cp out/arch/arm64/boot/Image ../../build-evidence/Image
+          find out/arch/arm64/boot/dts -name '*.dtb' -o -name '*.dtbo' > ../../build-evidence/dts-outputs.txt
+          find out -name '*.ko' > ../../build-evidence/in-tree-modules.txt
+          printf '%s\n' 'COMPILE CANDIDATE ONLY: no external-module ABI, vendor compatibility or phone boot qualification. Not a ROM or flashable package.' > ../../build-evidence/STATUS.txt
+          sha256sum ../../build-evidence/Image > ../../build-evidence/Image.sha256
+      - name: Build external hardware modules and check release metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash fresh-kernel/build_onyx_external_modules.sh "$GITHUB_WORKSPACE" 2>&1 | tee build-evidence/external-compile.log
+      - name: Preserve compiled modules and symbol tables
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-evidence
+          if [ -d sources ]; then
+            find sources -type f \( -name '*.ko' -o -name 'Module.symvers' -o -name 'modules.order' \) -print0 > build-evidence/module-outputs.list0
+            if [ -s build-evidence/module-outputs.list0 ]; then
+              tar --null -T build-evidence/module-outputs.list0 -czf build-evidence/module-outputs.tar.gz
+              sha256sum build-evidence/module-outputs.tar.gz > build-evidence/module-outputs.sha256
+            fi
+          fi
+      - name: Preserve build evidence and diagnostic logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corrected-onyx-kernel-build-evidence-not-rom
+          path: build-evidence/
+          if-no-files-found: error
+          retention-days: 14

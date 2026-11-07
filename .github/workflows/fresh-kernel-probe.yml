@@ -1,0 +1,84 @@
+name: Targeted external-module wrapper probe
+'on':
+  pull_request:
+    paths:
+    - fresh-kernel/build_onyx_external_modules.sh
+    - .github/workflows/fresh-kernel-probe.yml
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  actions: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+    - uses: actions/checkout@v4
+    - name: Install probe tools
+      run: 'sudo apt-get update
+
+        sudo apt-get install -y build-essential bc bison flex clang lld llvm libssl-dev libelf-dev dwarves rsync
+
+        '
+    - name: Fetch pinned compiler and source set
+      shell: bash
+      run: "set -euo pipefail\nfor entry in 'sm8735 xiaomi-onyx-dev/android_kernel_xiaomi_sm8735 d0881fd7905872a11cd70bc46b37849135aa9a71'\
+        \ 'sm8735-devicetrees xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-devicetrees f4fbbed3359e85ffee608a0ff4359fa462735614'\
+        \ 'sm8735-modules xiaomi-onyx-dev/android_kernel_xiaomi_sm8735-modules e46506b8f6e302d1e4b520dd814c9910d55b6ba7';\
+        \ do\n  read -r dir repo sha <<< \"$entry\"\n  mkdir -p \"sources/$dir\"\n  git -C \"sources/$dir\" init\n  git -C\
+        \ \"sources/$dir\" remote add origin \"https://github.com/$repo.git\"\n  git -C \"sources/$dir\" fetch --depth=1 origin\
+        \ \"$sha\"\n  git -C \"sources/$dir\" checkout --detach FETCH_HEAD\ndone\ngit init compiler\ngit -C compiler remote\
+        \ add origin https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86\ngit -C compiler sparse-checkout\
+        \ init --cone\ngit -C compiler sparse-checkout set clang-r510928\ngit -C compiler fetch --filter=blob:none --depth=1\
+        \ origin 921f6da692b1ffc96a0daa7e741373f0089d40b0\ngit -C compiler checkout --detach FETCH_HEAD\ntest -x compiler/clang-r510928/bin/clang\n\
+        echo \"$GITHUB_WORKSPACE/compiler/clang-r510928/bin\" >> \"$GITHUB_PATH\"\ndf -h\n"
+    - name: Integrate pinned KernelSU and repair certificate guards
+      shell: bash
+      run: "set -euo pipefail\ncd sources/sm8735\ncurl -fL --retry 3 https://raw.githubusercontent.com/KernelSU-Next/KernelSU-Next/4c706b5938665866ebe16944a481a7b91e3396af/kernel/setup.sh\
+        \ -o ../setup-ksu.sh\nbash ../setup-ksu.sh 4c706b5938665866ebe16944a481a7b91e3396af\ntest \"$(git -C KernelSU-Next\
+        \ rev-parse HEAD)\" = 4c706b5938665866ebe16944a481a7b91e3396af\npython3 - <<'PY'\nfrom pathlib import Path\np=Path('certs/extract-cert.c');\
+        \ text=p.read_text()\nfor body in ['static const char *key_pass;', '\\tkey_pass = getenv(\"KBUILD_SIGN_PIN\");']:\n\
+        \    before='#ifdef USE_PKCS11_ENGINE\\n'+body+'\\n#endif'\n    assert text.count(before)==1, 'Unexpected certificate-tool\
+        \ source'\n    text=text.replace(before,'#ifndef OPENSSL_IS_BORINGSSL\\n'+body+'\\n#endif')\np.write_text(text)\n\
+        PY\n"
+    - name: Download prior generated configuration and symbol CRCs
+      uses: actions/download-artifact@v4
+      with:
+        name: corrected-onyx-kernel-build-evidence-not-rom
+        run-id: 42390437215
+        github-token: ${{ github.token }}
+        path: previous
+    - name: Compile the failed group using its default wrapper target
+      shell: bash
+      run: 'set -euo pipefail
+
+        mkdir -p sources/sm8735/out probe-evidence
+
+        cp previous/kernel.config sources/sm8735/out/.config
+
+        make -C sources/sm8735 O=out ARCH=arm64 LLVM=1 olddefconfig modules_prepare
+
+        cp previous/Module.symvers sources/sm8735/out/Module.symvers
+
+        kernel="$GITHUB_WORKSPACE/sources/sm8735"
+
+        out="$kernel/out"
+
+        make -j2 -C sources/sm8735-modules/qcom/opensource/datarmnet-ext/mem M=../sm8735-modules/qcom/opensource/datarmnet-ext/mem
+        KERNEL_SRC="$kernel" OUT_DIR="$out" O="$out" ARCH=arm64 LLVM=1 LLVM_IAS=1 TARGET_PRODUCT=onyx TARGET_BOARD_PLATFORM=sun
+        2>&1 | tee probe-evidence/probe.log
+
+        find sources -name ''rmnet_mem.ko'' > probe-evidence/modules.txt
+
+        test -s probe-evidence/modules.txt
+
+        printf ''%s\n'' ''Wrapper entry-point probe only; not a complete ABI/boot qualification.'' > probe-evidence/STATUS.txt
+
+        '
+    - name: Preserve probe evidence
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: datarmnet-wrapper-probe-not-kernel-release
+        path: probe-evidence/
+        if-no-files-found: error
