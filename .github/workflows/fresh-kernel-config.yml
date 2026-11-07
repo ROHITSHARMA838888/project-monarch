@@ -121,6 +121,19 @@ jobs:
         run: |
           set -euo pipefail
           bash fresh-kernel/build_onyx_external_modules.sh "$GITHUB_WORKSPACE" 2>&1 | tee build-evidence/external-compile.log
+      - name: Preserve compiled modules and symbol tables
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p build-evidence
+          if [ -d sources ]; then
+            find sources -type f \( -name '*.ko' -o -name 'Module.symvers' -o -name 'modules.order' \) -print0 > build-evidence/module-outputs.list0
+            if [ -s build-evidence/module-outputs.list0 ]; then
+              tar --null -T build-evidence/module-outputs.list0 -czf build-evidence/module-outputs.tar.gz
+              sha256sum build-evidence/module-outputs.tar.gz > build-evidence/module-outputs.sha256
+            fi
+          fi
       - name: Preserve build evidence and diagnostic logs
         if: always()
         uses: actions/upload-artifact@v4
