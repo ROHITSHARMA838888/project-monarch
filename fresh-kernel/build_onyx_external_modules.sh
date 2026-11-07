@@ -57,4 +57,15 @@ while IFS= read -r module; do
   test "${actual%% *}" = "$release"
   printf '%s\t%s\n' "$module" "$actual" >> "$evidence/module-vermagic.tsv"
 done < "$evidence/all-built-modules.txt"
+python3 - "$work" <<'PY'
+from pathlib import Path
+import json,sys
+r=Path(sys.argv[1]); required=set((r/'fresh-kernel/required-runtime-modules.txt').read_text().splitlines())
+built={Path(s).name for s in (r/'build-evidence/all-built-modules.txt').read_text().splitlines()}
+missing=sorted(required-built)
+report={'required':len(required),'built_names':len(built),'missing':missing,'phone_boot_verified':False,'symbol_crc_verified':False}
+(r/'build-evidence/runtime-module-coverage.json').write_text(json.dumps(report,indent=2)+'\n')
+print(json.dumps(report,indent=2))
+if missing:raise SystemExit('Required runtime modules are missing')
+PY
 printf '%s\n' 'External compile/vermagic checks complete; signing, firmware, full ABI and phone boot qualification still required.' > "$evidence/EXTERNAL-STATUS.txt"
