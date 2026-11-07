@@ -78,12 +78,12 @@ jobs:
           make -j"$(nproc)" O=out ARCH=arm64 CC=clang CROSS_COMPILE=aarch64-linux-gnu- LLVM=1 LLVM_IAS=1 Image
           test -s out/arch/arm64/boot/Image
           cp out/.config ../../output/kernel.config
-          cp out/Module.symvers ../../output/Module.symvers
+          cp out/vmlinux.symvers ../../output/vmlinux.symvers
       - name: Package and verify kernel artifact
         run: |
           set -euo pipefail
           cp kernel/sm8735/out/arch/arm64/boot/Image AnyKernel3/Image
-          sed -i 's/^device.name1=.*/device.name1=onyx/; s/^device.name2=.*/device.name2=/; s/^device.name3=.*/device.name3=/; s/^device.name4=.*/device.name4=/; s/^device.name5=.*/device.name5=/' AnyKernel3/anykernel.sh
+          cp installer/anykernel.sh AnyKernel3/anykernel.sh
           printf 'project=%s\nkernel=%s\nksu=%s\nanykernel=%s\nvariant=%s\n' "$GITHUB_SHA" "$KERNEL_SHA" "$KSU_SHA" "$AK3_SHA" "$VARIANT" > output/provenance.txt
           cp output/provenance.txt AnyKernel3/monarch-build.txt
           (cd AnyKernel3 && zip -r9 "../output/Monarch-kernel-onyx-$VARIANT.zip" . -x '.git/*' 'README.md' '*placeholder')
@@ -97,6 +97,6 @@ jobs:
             output/SHA256SUMS.txt
             output/provenance.txt
             output/kernel.config
-            output/Module.symvers
+            output/vmlinux.symvers
           if-no-files-found: error
           retention-days: 14
